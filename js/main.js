@@ -21,7 +21,7 @@ function fill(k){const c=C[k];$('#h1a').textContent=c.h[0];$('#h1b').textContent
 /* ---------- frame sequences ---------- */
 const SEQ={women:{path:'assets/frames/women/',total:240,p:[]},men:{path:'assets/frames/men/',total:240,p:[]}},done={women:[],men:[]};
 const pad=n=>String(n).padStart(4,'0');
-function load(k,i){if(i%STEP)return Promise.resolve();const s=SEQ[k];return s.p[i]||(s.p[i]=new Promise(r=>{const im=new Image();im.onload=()=>{done[k][i]=im;r()};im.onerror=r;im.src=`${s.path}frame_${pad(i+1)}.webp`}))}
+function load(k,i){if(i%STEP)return Promise.resolve();const s=SEQ[k];return s.p[i]||(s.p[i]=new Promise(r=>{const im=new Image();im.onload=()=>{done[k][i]=im;r()};im.onerror=r;im.src=`batch_${2+Math.floor((k==='men'?i:240+i)/96)}_frames/${s.path}frame_${pad(i+1)}.webp`}))}
 async function preload(k,n,cb){let c=0;await Promise.all(Array.from({length:n},(_,i)=>load(k,i).then(()=>cb&&cb(++c/n))))}
 async function rest(k){for(let i=30;i<SEQ[k].total;i+=10){await Promise.all(Array.from({length:10},(_,j)=>i+j<SEQ[k].total?load(k,i+j):0));await new Promise(r=>setTimeout(r,40))}}
 let key='women',cur=0,target=0,last=-1;
