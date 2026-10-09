@@ -3,7 +3,7 @@ const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelecto
 gsap.registerPlugin(ScrollTrigger);ScrollTrigger.config({ignoreMobileResize:true});
 const MOB=matchMedia('(max-width:820px)').matches,STEP=MOB?2:1;
 const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
-const lenis=(!reduce&&window.Lenis)?new Lenis({lerp:.08}):null;
+const TOUCH=matchMedia('(pointer:coarse)').matches;const lenis=(!reduce&&!TOUCH&&window.Lenis)?new Lenis({lerp:.08}):null;
 if(lenis){lenis.on('scroll',ScrollTrigger.update);gsap.ticker.add(t=>lenis.raf(t*1000));gsap.ticker.lagSmoothing(0)}
 let dustT=0;
 
@@ -18,42 +18,47 @@ function fill(k){const c=C[k];$('#h1a').textContent=c.h[0];$('#h1b').textContent
  $('#c4t').textContent=c.t4;
  $('#c4s').innerHTML=c.stats.map(s=>`<div><b><span data-v="${s[0]}" data-d="${s[1]}">0</span><u${/^[\/']/.test(s[2])?' class="nb"':''}>${s[2]}</u></b><small>${s[3]}</small></div>`).join('');L3=$$('#c3l li');S4=$$('#c4s span');fu=1}
 
-/* ---------- frame sequences ---------- */
-const SEQ={women:{path:'assets/frames/women/',total:240,p:[]},men:{path:'assets/frames/men/',total:240,p:[]}},done={women:[],men:[]};
+/* ---------- frame sequences (progressive + adaptive) ---------- */
 const pad=n=>String(n).padStart(4,'0');
-function load(k,i){if(i%STEP)return Promise.resolve();const s=SEQ[k];return s.p[i]||(s.p[i]=new Promise(r=>{const im=new Image();im.onload=()=>{done[k][i]=im;r()};im.onerror=r;im.src=`batch_${2+Math.floor((k==='men'?i:240+i)/96)}_frames/${s.path}frame_${pad(i+1)}.webp`}))}
-async function preload(k,n,cb){let c=0;await Promise.all(Array.from({length:n},(_,i)=>load(k,i).then(()=>cb&&cb(++c/n))))}
-async function rest(k){for(let i=30;i<SEQ[k].total;i+=10){await Promise.all(Array.from({length:10},(_,j)=>i+j<SEQ[k].total?load(k,i+j):0));await new Promise(r=>setTimeout(r,40))}}
+const LOW=TOUCH&&innerWidth<=600,SET=LOW?'m':'d',TOT={d:240,m:96},T=TOT[SET],MINSTEP=(SET==='d'&&MOB)?2:1,CONC=LOW?4:8;
+const FURL=(k,i)=>LOW?`${k==='women'?'mw':'mm'}/frame_${pad(i+1)}.webp`:`batch_${2+Math.floor((k==='men'?i:240+i)/96)}_frames/assets/frames/${k}/frame_${pad(i+1)}.webp`;
+const SEQ={women:{total:T},men:{total:T}},done={women:[],men:[]},Q={};
+function order(){const s0=SET==='m'?12:24,st=[];for(let s=s0;s>=1;s=Math.floor(s/2))st.push(s);const seen=new Set(),o=[],add=i=>{if(i<T&&i%MINSTEP===0&&!seen.has(i)){seen.add(i);o.push(i)}};let n0=0;for(const s of st){for(let i=0;i<T;i+=s)add(i);if(s===s0){add(T-1-((T-1)%MINSTEP));n0=o.length}}return[o,n0]}
+function grab(k,i){return new Promise(r=>{const im=new Image();im.decoding='async';im.onload=()=>{(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(()=>{done[k][i]=im;if(k===key)last=-1;r()})};im.onerror=r;im.src=(window.FR&&FR[SET]&&FR[SET][k][i])||FURL(k,i)})}
+function pump(k){const s=Q[k];if(!s)return;while(s.act<CONC&&s.pos<s.o.length){if(k!==key&&s.pos>=s.n0)return;const i=s.o[s.pos++];s.act++;grab(k,i).then(()=>{s.act--;s.n++;if(s.cb)s.cb(Math.min(1,s.n/s.n0));if(s.n>=s.n0&&s.res){s.res();s.res=null}pump(k)})}}
+function loadSeq(k,cb){if(Q[k]){pump(k);return Q[k].p}const[o,n0]=order(),s=Q[k]={o,n0,pos:0,act:0,n:0,cb};s.p=new Promise(r=>s.res=r);pump(k);return s.p}
+const near=(a,i)=>{for(let o=0;o<T;o++){const f=a[i-o]||a[i+o];if(f)return f}return null};
 let key='women',cur=0,target=0,last=-1;
 const cv=$('#seq'),cx=cv.getContext('2d');
-function size(){const d=Math.min(devicePixelRatio||1,2);cv.width=innerWidth*d;cv.height=innerHeight*d;last=-1}
-function draw(i){const a=done[key],W=cv.width,H=cv.height;let f=a[i];for(let o=1;!f&&o<SEQ[key].total;o++)f=a[i-o]||a[i+o];
- if(!f){const g=cx.createLinearGradient(0,0,W,H);g.addColorStop(0,'#060A16');g.addColorStop(1,'#3a2f12');cx.fillStyle=g;cx.fillRect(0,0,W,H);cx.fillStyle='#E6CF94';cx.font=`${W/18}px serif`;cx.fillText(pad(i+1),W*.08,H*.5);return}
- const s=Math.max(W/f.width,H/f.height),w=f.width*s,h=f.height*s;cx.drawImage(f,(W-w)/2,(H-h)/2,w,h)}
+function size(){const d=Math.min(devicePixelRatio||1,2),p=cv.parentElement;cv.width=Math.round(p.clientWidth*d);cv.height=Math.round(p.clientHeight*d);last=-1}
+function cover(f,W,H,al){const s=Math.max(W/f.width,H/f.height),w=f.width*s,h=f.height*s;cx.globalAlpha=al;cx.drawImage(f,(W-w)/2,(H-h)/2,w,h)}
+function draw(fi){const a=done[key],W=cv.width,H=cv.height,i0=Math.floor(fi),fr=fi-i0,A=near(a,i0);
+ if(!A){const g=cx.createLinearGradient(0,0,W,H);g.addColorStop(0,'#060A16');g.addColorStop(1,'#1a1608');cx.globalAlpha=1;cx.fillStyle=g;cx.fillRect(0,0,W,H);return}
+ cover(A,W,H,1);const B=fr>.03?near(a,Math.min(T-1,i0+1)):null;if(B&&B!==A)cover(B,W,H,fr);cx.globalAlpha=1}
 
 /* ---------- hero chapters + HUD ---------- */
 const ch=$$('.ch');let lc=-1,fu=1,L3=[],S4=[];
-function ui(p,i){const f=.04;
+function ui(p){const f=.04;
  ch.forEach((e,k)=>{const s=k*.25,en=s+.25,a=Math.min(k?clamp((p-(s-f))/(2*f)):1,k<3?clamp((en+f-p)/(2*f)):1);e.style.opacity=a;e.style.transform=(k===0?'translateY(-50%) ':'')+`translateY(${(1-a)*30}px)`;e.style.pointerEvents=a>.5?'auto':'none'});
  L3.forEach((l,j)=>{const a=clamp((p-.5-.012*j-.01)/.03);l.style.opacity=a;l.style.transform=`translateX(${(1-a)*20}px)`});
  const q=clamp((p-.76)/.17);S4.forEach(s=>s.textContent=(+s.dataset.v*q).toFixed(+s.dataset.d));
  const ci=Math.min(3,Math.floor(p*4));$('#cn').textContent='0'+(ci+1);$('#cf').style.width=(p*100)+'%';
- const sec=i/24,mm=String(Math.floor(sec)).padStart(2,'0'),ff=String(i%24).padStart(2,'0');
- $('#hrt').textContent=p<.04?'SCROLL ———':`00:${mm}:${ff}   ·   ${String(i+1).padStart(3,'0')} / ${SEQ[key].total}`}
-gsap.ticker.add(()=>{cur+=(target-cur)*.2;if(Math.abs(target-cur)<1e-4)cur=target;const i=Math.round(cur*(SEQ[key].total-1));if(i!==last){last=i;draw(i)}if(cur!==lc||fu){lc=cur;fu=0;ui(cur,i)}});
+ const t=p*10,mm=String(Math.floor(t)).padStart(2,'0'),ff=String(Math.floor((t%1)*24)).padStart(2,'0'),n=Math.round(p*239)+1;
+ $('#hrt').textContent=p<.04?'SCROLL ———':`00:${mm}:${ff}   ·   ${String(n).padStart(3,'0')} / 240`}
+gsap.ticker.add(()=>{cur+=(target-cur)*.18;if(Math.abs(target-cur)<2e-4)cur=target;const fi=cur*(T-1);if(last<0||Math.abs(fi-last)>.004){last=fi;draw(fi)}if(cur!==lc||fu){lc=cur;fu=0;ui(cur)}});
 ScrollTrigger.create({trigger:'#hero',start:'top top',end:'bottom bottom',onUpdate:s=>target=s.progress});
 
 function setSeq(k,keep){if(k===key)return;key=k;document.body.dataset.seq=k;$$('.tg button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));fill(k);renderCards();setTrack(0);ScrollTrigger.refresh();
- gsap.fromTo(cv,{opacity:0},{opacity:1,duration:.7});last=-1;preload(k,30).then(()=>last=-1);rest(k);
+ gsap.fromTo(cv,{opacity:0},{opacity:1,duration:.7});last=-1;if(LOW){const o=k==='women'?'men':'women';done[o]=[];delete Q[o]}loadSeq(k).then(()=>last=-1);
  const top=(keep?$('#featured'):$('#hero')).offsetTop;lenis?lenis.scrollTo(top,{immediate:true}):scrollTo(0,top)}
 $$('.tg button').forEach(b=>b.onclick=()=>setSeq(b.dataset.k,!!b.closest(".tg2")));
 
 /* ---------- menu ---------- */
-$('#burger').onclick=()=>{document.body.classList.toggle('menu');lenis&&(document.body.classList.contains('menu')?lenis.stop():lenis.start())};
-$$('#menu a').forEach(a=>a.onclick=e=>{e.preventDefault();document.body.classList.remove('menu');lenis&&lenis.start();const t=$(a.getAttribute('href'));lenis?lenis.scrollTo(t,{duration:1.6}):t.scrollIntoView()});
+$('#burger').onclick=()=>{document.body.classList.toggle('menu');lock(document.body.classList.contains('menu'))};
+$$('#menu a').forEach(a=>a.onclick=e=>{e.preventDefault();document.body.classList.remove('menu');lock(0);const t=$(a.getAttribute('href'));lenis?lenis.scrollTo(t,{duration:1.6}):t.scrollIntoView({behavior:'smooth'})});
 
 /* ---------- featured carousel ---------- */
-let CARDS=[],CC=[];function renderCC(){CARDS=[...trk.children];CC=CARDS.map(c=>[c.offsetLeft+c.offsetWidth/2,c.offsetWidth])}
+let CARDS=[],CC=[];function renderCC(){CARDS=[...trk.children];CC=CARDS.map(c=>{const b=c.querySelector('.im'),im=c.querySelector('img');if(im&&b.offsetHeight)im.classList.toggle('fitc',b.offsetWidth/b.offsetHeight>.95);return[c.offsetLeft+c.offsetWidth/2,c.offsetWidth]})}
 const GEN=p=>/saree|silk|zari|drape|tissue|kanjivaram|banarasi|chanderi/i.test(p[1])?"women":"men";
 const P=[['KANCHIPURAM','Midnight Silk Saree','KP-1204','₹ 48,500','Available','p_saree1'],['CLOTHIY MEN','Midnight Oxford Shirt','MO-3101','₹ 3,490','Available','p_shirt1'],['BANARAS','Gold Zari Katan Saree','BN-2217','₹ 36,900','Reserved','p_saree3'],['CLOTHIY MEN','Pearl Button Shirt','PB-3112','₹ 2,990','Available','p_shirt2'],['MYSORE','Silk Zari Drape','MY-0931','₹ 18,900','Last one','p_saree2'],['CLOTHIY MEN','The Signature Shirt','SG-3140','₹ 4,290','Last one','p_shirt3'],['CHANDERI','Gold Tissue Edit','CH-0418','₹ 12,400','On enquiry','p_saree4'],['CLOTHIY MEN','Classic Fit Oxford','CF-3177','₹ 3,190','Reserved','p_shirt4'],
 ['KANCHIPURAM','Royal Red Kanjivaram','KP-1310','₹ 52,500','Available','p_red_saree2'],['KANCHIPURAM','Crimson Zari Silk Drape','KP-1322','₹ 41,900','Available','p_red_saree'],['CLOTHIY MEN','Royal Red Oxford Shirt','RR-3201','₹ 3,590','Available','p_red_shirt'],
@@ -75,7 +80,7 @@ function renderBag(){const ids=Object.keys(bag).filter(i=>P[i]);$('#cc').textCon
  $('#ct').textContent=inr(ids.reduce((a,i)=>a+num(P[i][3])*bag[i],0));$('#cm').textContent='';try{localStorage.setItem('clothiy_bag',JSON.stringify(bag))}catch(e){}}
 let tt;function toast(m,view){const t=$('#toast');t.innerHTML=`<span>${m}</span>`+(view?'<button id="tv">View bag</button>':'');t.classList.add('on');if(view)$('#tv').onclick=()=>{t.classList.remove('on');openCart()};clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2800)}
 function add(i,btn){bag[i]=(bag[i]||0)+1;renderBag();const s=$('#cc');s.classList.remove('pop');void s.offsetWidth;s.classList.add('pop');toast(`${P[i][1]} added to bag`,1);if(btn){const o=btn.textContent;btn.classList.add('ok');btn.textContent='✓';setTimeout(()=>{btn.classList.remove('ok');btn.textContent=o},1200)}}
-const lock=on=>lenis&&(on?lenis.stop():lenis.start());
+const lock=on=>lenis?(on?lenis.stop():lenis.start()):(document.documentElement.style.overflow=on?'hidden':'');
 function openCart(){closeSearch();$('#toast').classList.remove('on');$('#cart').classList.add('on');$('#shade2').classList.add('on');lock(1)}
 function closeCart(){$('#cart').classList.remove('on');$('#shade2').classList.remove('on');if(!$('#search').classList.contains('on'))lock(0)}
 function openSearch(){closeCart();$('#search').classList.add('on');lock(1);runSearch();setTimeout(()=>$('#sq').focus(),350)}
@@ -116,7 +121,8 @@ ScrollTrigger.create({trigger:'#story',start:'top top',end:'bottom bottom',onUpd
 if(!reduce)$$('.mag').forEach(b=>{const c=gsap.utils.clamp(-8,8);b.addEventListener('mousemove',e=>{const r=b.getBoundingClientRect();gsap.to(b,{x:c((e.clientX-r.left-r.width/2)*.25),y:c((e.clientY-r.top-r.height/2)*.25),duration:.3,overwrite:true})});b.addEventListener('mouseleave',()=>gsap.to(b,{x:0,y:0,duration:.5,ease:'power3.out'}))});
 
 /* ---------- THREE.JS layer 1: gold dust ---------- */
-(function(){if(reduce||MOB||!window.THREE)return;let r;try{r=new THREE.WebGLRenderer({canvas:$('#dust'),alpha:true})}catch(e){return}
+function loadThree(cb){if(window.THREE)return cb();const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';s.onload=cb;document.head.appendChild(s)}
+function initDust(){if(reduce||MOB||!window.THREE)return;let r;try{r=new THREE.WebGLRenderer({canvas:$('#dust'),alpha:true})}catch(e){return}
  r.setPixelRatio(Math.min(devicePixelRatio,1.5));const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(60,1,.1,100);cam.position.z=30;
  const N=innerWidth<768?600:1800,pos=new Float32Array(N*3),spd=new Float32Array(N);
  for(let i=0;i<N;i++){pos[i*3]=(Math.random()-.5)*80;pos[i*3+1]=(Math.random()-.5)*50;pos[i*3+2]=(Math.random()-.5)*40;spd[i]=.2+Math.random()}
@@ -126,11 +132,11 @@ if(!reduce)$$('.mag').forEach(b=>{const c=gsap.utils.clamp(-8,8);b.addEventListe
  let mx=0,my=0;addEventListener('pointermove',e=>{mx=e.clientX/innerWidth-.5;my=e.clientY/innerHeight-.5});
  const rs=()=>{r.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()};rs();addEventListener('resize',rs);
  gsap.ticker.add((tm,dt)=>{const v=lenis?lenis.velocity:0,a=g.attributes.position.array;for(let i=0;i<N;i++){a[i*3+1]+=spd[i]*.012*(1+Math.min(Math.abs(v),30)*.3)*(dt/16);if(a[i*3+1]>25)a[i*3+1]=-25}
-  g.attributes.position.needsUpdate=true;pts.position.x+=(mx*-3-pts.position.x)*.05;pts.position.y+=(my*2-pts.position.y)*.05;m.opacity+=(dustT-m.opacity)*.06;r.render(sc,cam)})})();
+  g.attributes.position.needsUpdate=true;pts.position.x+=(mx*-3-pts.position.x)*.05;pts.position.y+=(my*2-pts.position.y)*.05;m.opacity+=(dustT-m.opacity)*.06;r.render(sc,cam)})}
 
 /* ---------- THREE.JS layer 2: fabric ripple on New Collection cards ---------- */
 function ripple(box){if(reduce||MOB||!window.THREE)return;box.addEventListener('mouseenter',function f(){box.removeEventListener('mouseenter',f);ripple2(box);box.dispatchEvent(new Event('mouseenter'))})}
-function ripple2(box){let r;try{r=new THREE.WebGLRenderer({alpha:true})}catch(e){return}
+function ripple2(box){if(!window.THREE)return;let r;try{r=new THREE.WebGLRenderer({alpha:true})}catch(e){return}
  const cvs=r.domElement;cvs.className='rp';box.appendChild(cvs);const sc=new THREE.Scene(),cam=new THREE.OrthographicCamera(-.5,.5,.5,-.5,0,1),u={t:{value:0},h:{value:0},tx:{value:null}};
  new THREE.TextureLoader().load($('img',box).src,tx=>u.tx.value=tx);
  sc.add(new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.ShaderMaterial({uniforms:u,vertexShader:'varying vec2 v;void main(){v=uv;gl_Position=vec4(position.xy*2.,0.,1.);}',fragmentShader:'uniform sampler2D tx;uniform float t,h;varying vec2 v;void main(){vec2 p=v;p+=vec2(sin(p.y*9.+t*1.6),cos(p.x*7.+t*1.3))*h*.014;p=(p-.5)/(1.+.06*h)+.5;gl_FragColor=texture2D(tx,p);}'})));
@@ -142,4 +148,5 @@ $$('.rb').forEach(ripple);
 
 /* ---------- boot ---------- */
 fill('women');size();let lw=innerWidth;addEventListener('resize',()=>{if(innerWidth===lw)return;lw=innerWidth;size();renderCC();ScrollTrigger.refresh()});
-preload('women',30,p=>{$('#lp').style.width=p*100+'%';$('#lt').textContent=Math.round(p*100)+'%'}).then(()=>{last=-1;$('#loader').classList.add('off');ScrollTrigger.refresh();rest('women');setTimeout(()=>preload('men',30).then(()=>rest('men')),2500)});
+loadSeq('women',p=>{$('#lp').style.width=p*100+'%';$('#lt').textContent=Math.round(p*100)+'%'}).then(()=>{last=-1;$('#loader').classList.add('off');ScrollTrigger.refresh();if(!LOW)setTimeout(()=>loadSeq('men'),2500);if(!MOB&&!reduce)loadThree(initDust)});
+setTimeout(()=>$('#loader').classList.add('off'),9000);
