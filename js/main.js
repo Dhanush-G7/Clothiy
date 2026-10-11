@@ -21,10 +21,13 @@ function fill(k){const c=C[k];$('#h1a').textContent=c.h[0];$('#h1b').textContent
 /* ---------- frame sequences (progressive + adaptive) ---------- */
 const pad=n=>String(n).padStart(4,'0');
 const LOW=TOUCH&&innerWidth<=600,SET=LOW?'m':'d',TOT={d:240,m:96},T=TOT[SET],MINSTEP=(SET==='d'&&MOB)?2:1,CONC=LOW?4:8;
-const FURL=(k,i)=>LOW?`${k==='women'?'mw':'mm'}/frame_${pad(i+1)}.webp`:`batch_${2+Math.floor((k==='men'?i:240+i)/96)}_frames/assets/frames/${k}/frame_${pad(i+1)}.webp`;
+const FURLD=(k,d)=>`batch_${2+Math.floor((k==='men'?d:240+d)/96)}_frames/assets/frames/${k}/frame_${pad(d+1)}.webp`;
+const FURLM=(k,j)=>`${k==='women'?'mw':'mm'}/frame_${pad(j+1)}.webp`;
 const SEQ={women:{total:T},men:{total:T}},done={women:[],men:[]},Q={};
 function order(){const s0=SET==='m'?12:24,st=[];for(let s=s0;s>=1;s=Math.floor(s/2))st.push(s);const seen=new Set(),o=[],add=i=>{if(i<T&&i%MINSTEP===0&&!seen.has(i)){seen.add(i);o.push(i)}};let n0=0;for(const s of st){for(let i=0;i<T;i+=s)add(i);if(s===s0){add(T-1-((T-1)%MINSTEP));n0=o.length}}return[o,n0]}
-function grab(k,i){return new Promise(r=>{const im=new Image();im.decoding='async';im.onload=()=>{(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(()=>{done[k][i]=im;if(k===key)last=-1;r()})};im.onerror=r;im.src=(window.FR&&FR[SET]&&FR[SET][k][i])||FURL(k,i)})}
+let MFAIL=false;const POSTER={};
+function poster(k){const im=new Image();im.onload=()=>{POSTER[k]=im;last=-1};im.src=k==='women'?'assets/img/p_saree2.jpg':'assets/img/p_shirt1.jpg'}
+function grab(k,i){return new Promise(r=>{const im=new Image(),dm=Math.round(i*239/(T-1));im.decoding='async';let t=(LOW&&MFAIL)?1:0;im.onload=()=>{(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(()=>{done[k][i]=im;if(k===key)last=-1;r()})};im.onerror=()=>{if(LOW&&!t){t=1;MFAIL=true;im.src=FURLD(k,dm)}else r()};im.src=(window.FR&&FR[SET]&&FR[SET][k][i])||(LOW?(MFAIL?FURLD(k,dm):FURLM(k,i)):FURLD(k,i))})}
 function pump(k){const s=Q[k];if(!s)return;while(s.act<CONC&&s.pos<s.o.length){if(k!==key&&s.pos>=s.n0)return;const i=s.o[s.pos++];s.act++;grab(k,i).then(()=>{s.act--;s.n++;if(s.cb)s.cb(Math.min(1,s.n/s.n0));if(s.n>=s.n0&&s.res){s.res();s.res=null}pump(k)})}}
 function loadSeq(k,cb){if(Q[k]){pump(k);return Q[k].p}const[o,n0]=order(),s=Q[k]={o,n0,pos:0,act:0,n:0,cb};s.p=new Promise(r=>s.res=r);pump(k);return s.p}
 const near=(a,i)=>{for(let o=0;o<T;o++){const f=a[i-o]||a[i+o];if(f)return f}return null};
@@ -33,7 +36,7 @@ const cv=$('#seq'),cx=cv.getContext('2d');
 function size(){const d=Math.min(devicePixelRatio||1,2),p=cv.parentElement;cv.width=Math.round(p.clientWidth*d);cv.height=Math.round(p.clientHeight*d);last=-1}
 function cover(f,W,H,al){const s=Math.max(W/f.width,H/f.height),w=f.width*s,h=f.height*s;cx.globalAlpha=al;cx.drawImage(f,(W-w)/2,(H-h)/2,w,h)}
 function draw(fi){const a=done[key],W=cv.width,H=cv.height,i0=Math.floor(fi),fr=fi-i0,A=near(a,i0);
- if(!A){const g=cx.createLinearGradient(0,0,W,H);g.addColorStop(0,'#060A16');g.addColorStop(1,'#1a1608');cx.globalAlpha=1;cx.fillStyle=g;cx.fillRect(0,0,W,H);return}
+ if(!A){const P=POSTER[key];if(P){cover(P,W,H,1);cx.globalAlpha=1;return}const g=cx.createLinearGradient(0,0,W,H);g.addColorStop(0,'#060A16');g.addColorStop(1,'#1a1608');cx.globalAlpha=1;cx.fillStyle=g;cx.fillRect(0,0,W,H);return}
  cover(A,W,H,1);const B=fr>.03?near(a,Math.min(T-1,i0+1)):null;if(B&&B!==A)cover(B,W,H,fr);cx.globalAlpha=1}
 
 /* ---------- hero chapters + HUD ---------- */
@@ -148,5 +151,5 @@ $$('.rb').forEach(ripple);
 
 /* ---------- boot ---------- */
 fill('women');size();let lw=innerWidth;addEventListener('resize',()=>{if(innerWidth===lw)return;lw=innerWidth;size();renderCC();ScrollTrigger.refresh()});
-loadSeq('women',p=>{$('#lp').style.width=p*100+'%';$('#lt').textContent=Math.round(p*100)+'%'}).then(()=>{last=-1;$('#loader').classList.add('off');ScrollTrigger.refresh();if(!LOW)setTimeout(()=>loadSeq('men'),2500);if(!MOB&&!reduce)loadThree(initDust)});
-setTimeout(()=>$('#loader').classList.add('off'),9000);
+loadSeq('women',p=>{$('#lp').style.width=p*100+'%';$('#lt').textContent=Math.round(p*100)+'%'}).then(()=>{last=-1;$('#loader').classList.add('off');if(!near(done[key],0))poster(key);ScrollTrigger.refresh();if(!LOW)setTimeout(()=>loadSeq('men'),2500);if(!MOB&&!reduce)loadThree(initDust)});
+setTimeout(()=>{$('#loader').classList.add('off');if(!near(done[key],0))poster(key)},9000);
